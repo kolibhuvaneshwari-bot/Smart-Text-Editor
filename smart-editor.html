@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quill — Smart Text Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e10;
+    --surface: #18181c;
+    --surface2: #222228;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e6e0;
+    --muted: #7a7870;
+    --accent: #d4a853;
+    --accent2: #e8c47a;
+    --danger: #e05252;
+    --success: #52c07a;
+    --ai: #7c9cf0;
+    --ai-glow: rgba(124,156,240,0.15);
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* ── Layout ── */
+  #app {
+    display: grid;
+    grid-template-rows: 52px 1fr 32px;
+    grid-template-columns: 240px 1fr 280px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ── Top Bar ── */
+  #topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    gap: 16px;
+    position: relative;
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: var(--font-display);
+    font-size: 20px;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    flex-shrink: 0;
+    font-style: italic;
+  }
+
+  .logo span { color: var(--text); font-style: normal; font-size: 11px; font-family: var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; margin-left: 6px; opacity: 0.4; }
+
+  .topbar-mid {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .tb-file-btn {
+    background: none; border: none; color: var(--muted); font-family: var(--font-body);
+    font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tb-file-btn:hover { background: var(--surface2); color: var(--text); }
+
+  .topbar-right {
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+
+  .word-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .btn-save {
+    background: var(--accent); color: #1a1200; border: none;
+    font-family: var(--font-body); font-size: 12px; font-weight: 500;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    transition: all 0.15s; letter-spacing: 0.03em;
+  }
+  .btn-save:hover { background: var(--accent2); }
+  .btn-save:active { transform: scale(0.97); }
+
+  /* ── Sidebar Left ── */
+  #sidebar-left {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+    padding: 16px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
+  }
+
+  .side-section {
+    padding: 0 16px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+  .side-section:last-child { border-bottom: none; }
+
+  .side-label {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px; padding: 8px 0 4px;
+  }
+
+  .doc-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; border-radius: 7px; cursor: pointer;
+    font-size: 13px; color: var(--muted);
+    transition: all 0.15s; margin-bottom: 2px;
+  }
+  .doc-item:hover { background: var(--surface2); color: var(--text); }
+  .doc-item.active { background: var(--surface2); color: var(--text); }
+  .doc-item .doc-icon { font-size: 14px; flex-shrink: 0; }
+  .doc-item .doc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc-item .doc-date { font-size: 11px; color: var(--muted); opacity: 0.6; }
+
+  .new-doc-btn {
+    width: 100%; background: none; border: 1px dashed var(--border2);
+    color: var(--muted); font-family: var(--font-body); font-size: 12px;
+    padding: 7px; border-radius: 7px; cursor: pointer;
+    transition: all 0.15s; margin-top: 4px;
+  }
+  .new-doc-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; font-size: 12px; color: var(--muted);
+  }
+  .stat-row .val { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* ── Format Toolbar ── */
+  #format-bar {
+    grid-column: 2 / 3;
+    display: flex; align-items: center; gap: 2px;
+    padding: 6px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-wrap: wrap;
+  }
+
+  .fmt-group {
+    display: flex; align-items: center; gap: 1px;
+    padding-right: 8px; margin-right: 4px;
+    border-right: 1px solid var(--border);
+  }
+  .fmt-group:last-child { border-right: none; padding-right: 0; margin-right: 0; }
+
+  .fmt-btn {
+    background: none; border: none; color: var(--muted);
+    font-family: var(--font-body); font-size: 13px;
+    width: 30px; height: 28px; border-radius: 5px; cursor: pointer;
+    transition: all 0.12s; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .fmt-btn:hover { background: var(--surface2); color: var(--text); }
+  .fmt-btn.on { background: var(--surface2); color: var(--accent); }
+
+  .fmt-select {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    font-family: var(--font-body); font-size: 12px; padding: 3px 6px;
+    border-radius: 5px; cursor: pointer; outline: none;
+  }
+
+  /* ── Editor ── */
+  #editor-wrap {
+    background: var(--bg);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #editor {
+    flex: 1;
+    min-height: 500px;
+    max-width: 720px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 52px 60px 80px;
+    outline: none;
+    font-size: 16px;
+    line-height: 1.85;
+    color: var(--text);
+    font-family: var(--font-body);
+    caret-color: var(--accent);
+  }
+
+  #editor:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  /* editor typography */
+  #editor h1 { font-family: var(--font-display); font-size: 2.2em; line-height: 1.2; margin: 0.8em 0 0.4em; color: var(--text); font-weight: 600; }
+  #editor h2 { font-family: var(--font-display); font-size: 1.5em; line-height: 1.3; margin: 0.8em 0 0.3em; color: var(--text); font-weight: 400; font-style: italic; }
+  #editor h3 { font-size: 1.1em; margin: 0.6em 0 0.2em; font-weight: 500; color: var(--text); letter-spacing: 0.02em; }
+  #editor p { margin: 0 0 0.8em; }
+  #editor strong { color: var(--accent2); font-weight: 500; }
+  #editor em { font-style: italic; opacity: 0.9; }
+  #editor a { color: var(--ai); text-decoration: none; border-bottom: 1px solid rgba(124,156,240,0.3); }
+  #editor blockquote {
+    border-left: 3px solid var(--accent); padding-left: 20px;
+    margin: 1.5em 0; color: var(--muted); font-style: italic;
+    font-family: var(--font-display); font-size: 1.05em;
+  }
+  #editor ul, #editor ol { padding-left: 1.5em; margin: 0.5em 0 0.8em; }
+  #editor li { margin-bottom: 0.3em; }
+  #editor code {
+    font-family: var(--font-mono); font-size: 0.88em;
+    background: var(--surface2); padding: 2px 6px; border-radius: 4px;
+    color: var(--ai);
+  }
+  #editor pre {
+    background: var(--surface); padding: 16px 20px; border-radius: 8px;
+    border: 1px solid var(--border); margin: 1em 0; overflow-x: auto;
+  }
+  #editor pre code { background: none; padding: 0; }
+  #editor hr { border: none; border-top: 1px solid var(--border2); margin: 2em 0; }
+  #editor mark { background: rgba(212,168,83,0.2); color: var(--accent2); padding: 1px 3px; border-radius: 2px; }
+
+  /* Context menu */
+  #context-menu {
+    position: fixed; background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 9px; padding: 6px; z-index: 1000; display: none;
+    min-width: 180px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    animation: fadeIn 0.1s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: scale(0.97) translateY(-4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+  .ctx-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; border-radius: 6px; cursor: pointer;
+    font-size: 13px; color: var(--muted); transition: all 0.1s;
+  }
+  .ctx-item:hover { background: var(--surface2); color: var(--text); }
+  .ctx-item .ctx-icon { font-size: 14px; }
+  .ctx-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ── Sidebar Right (AI Panel) ── */
+  #sidebar-right {
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  #ai-panel-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .ai-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--ai); font-weight: 500; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ai); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .ai-quick-btns {
+    display: flex; flex-wrap: wrap; gap: 5px;
+  }
+
+  .ai-quick {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-family: var(--font-body); font-size: 11px;
+    padding: 4px 9px; border-radius: 5px; cursor: pointer;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .ai-quick:hover { border-color: var(--ai); color: var(--ai); background: var(--ai-glow); }
+
+  #ai-chat {
+    flex: 1; overflow-y: auto; padding: 12px 14px;
+    scrollbar-width: thin; scrollbar-color: var(--surface2) transparent;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+
+  .ai-msg {
+    padding: 10px 12px; border-radius: 8px; font-size: 13px; line-height: 1.6;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .ai-msg.user {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border);
+    align-self: flex-end; max-width: 90%;
+  }
+
+  .ai-msg.assistant {
+    background: var(--ai-glow); color: var(--text);
+    border: 1px solid rgba(124,156,240,0.2);
+    align-self: flex-start; max-width: 100%;
+  }
+
+  .ai-msg.assistant strong { color: var(--ai); }
+  .ai-msg-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.08em; }
+
+  .ai-loading {
+    display: flex; gap: 4px; align-items: center; padding: 10px 12px;
+  }
+  .ai-loading span {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--ai);
+    animation: bounce 1.2s infinite;
+  }
+  .ai-loading span:nth-child(2) { animation-delay: 0.2s; }
+  .ai-loading span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,80%,100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+
+  #ai-input-area {
+    padding: 10px 14px 14px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  #ai-input-wrap {
+    display: flex; align-items: flex-end; gap: 6px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 9px; padding: 6px 8px 6px 12px;
+    transition: border-color 0.15s;
+  }
+  #ai-input-wrap:focus-within { border-color: rgba(124,156,240,0.4); }
+
+  #ai-input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-family: var(--font-body); font-size: 13px;
+    resize: none; max-height: 80px; line-height: 1.5;
+    scrollbar-width: thin;
+  }
+  #ai-input::placeholder { color: var(--muted); }
+
+  .ai-send-btn {
+    background: var(--ai); border: none; width: 28px; height: 28px;
+    border-radius: 6px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s; color: #fff; font-size: 13px;
+  }
+  .ai-send-btn:hover { background: #9ab3f5; }
+  .ai-send-btn:active { transform: scale(0.93); }
+
+  /* ── Status Bar ── */
+  #statusbar {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 16px;
+    padding: 0 20px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 11px; color: var(--muted);
+  }
+  .status-item { display: flex; align-items: center; gap: 5px; }
+  .status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--success); }
+
+  /* ── Focus Mode ── */
+  body.focus-mode #sidebar-left,
+  body.focus-mode #sidebar-right,
+  body.focus-mode #format-bar,
+  body.focus-mode #topbar .topbar-mid,
+  body.focus-mode #topbar .topbar-right { opacity: 0; pointer-events: none; transition: opacity 0.4s; }
+  body.focus-mode #editor { max-width: 640px; padding: 80px 60px; }
+  body.focus-mode:hover #sidebar-left,
+  body.focus-mode:hover #sidebar-right,
+  body.focus-mode:hover #format-bar,
+  body.focus-mode:hover #topbar .topbar-mid,
+  body.focus-mode:hover #topbar .topbar-right { opacity: 1; pointer-events: auto; }
+
+  /* ── Tooltip ── */
+  [data-tip] { position: relative; }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border2);
+    font-size: 11px; padding: 4px 8px; border-radius: 5px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 100;
+  }
+  [data-tip]:hover::after { opacity: 1; }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+
+  /* Find & Replace */
+  #find-bar {
+    position: absolute; top: 60px; right: 310px; z-index: 50;
+    background: var(--surface); border: 1px solid var(--border2);
+    border-radius: 10px; padding: 10px 14px; display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    gap: 8px; align-items: center; flex-wrap: wrap;
+    min-width: 340px;
+  }
+  #find-bar.open { display: flex; }
+  .find-input {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--font-mono); font-size: 13px;
+    padding: 5px 10px; border-radius: 6px; outline: none; width: 130px;
+  }
+  .find-input:focus { border-color: var(--accent); }
+  .find-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; padding: 5px 10px;
+    border-radius: 6px; cursor: pointer; font-family: var(--font-body);
+    transition: all 0.12s;
+  }
+  .find-btn:hover { color: var(--text); }
+  .find-count { font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Top Bar -->
+  <header id="topbar">
+    <div class="logo">Quill <span>Smart Editor</span></div>
+    <div class="topbar-mid">
+      <button class="tb-file-btn" onclick="newDoc()">New</button>
+      <button class="tb-file-btn" onclick="openDoc()">Open</button>
+      <button class="tb-file-btn" onclick="toggleFind()">Find</button>
+      <button class="tb-file-btn" onclick="toggleFocus()">Focus</button>
+      <button class="tb-file-btn" onclick="exportDoc()">Export</button>
+    </div>
+    <div class="topbar-right">
+      <span class="word-count" id="wc-display">0 words</span>
+      <button class="btn-save" onclick="saveDoc()">Save</button>
+    </div>
+  </header>
+
+  <!-- Left Sidebar -->
+  <aside id="sidebar-left">
+    <div class="side-section">
+      <div class="side-label">Documents</div>
+      <div id="doc-list"></div>
+      <button class="new-doc-btn" onclick="newDoc()">+ New document</button>
+    </div>
+    <div class="side-section">
+      <div class="side-label">Document stats</div>
+      <div class="stat-row"><span>Words</span><span class="val" id="stat-words">0</span></div>
+      <div class="stat-row"><span>Chars</span><span class="val" id="stat-chars">0</span></div>
+      <div class="stat-row"><span>Sentences</span><span class="val" id="stat-sent">0</span></div>
+      <div class="stat-row"><span>Paragraphs</span><span class="val" id="stat-para">0</span></div>
+      <div class="stat-row"><span>Read time</span><span class="val" id="stat-read">0 min</span></div>
+    </div>
+    <div class="side-section">
+      <div class="side-label">Outline</div>
+      <div id="outline-list" style="font-size:12px;color:var(--muted);"></div>
+    </div>
+  </aside>
+
+  <!-- Format Bar -->
+  <div id="format-bar">
+    <div class="fmt-group">
+      <select class="fmt-select" onchange="formatBlock(this.value)" id="heading-select">
+        <option value="p">Paragraph</option>
+        <option value="h1">Heading 1</option>
+        <option value="h2">Heading 2</option>
+        <option value="h3">Heading 3</option>
+        <option value="pre">Code Block</option>
+        <option value="blockquote">Quote</option>
+      </select>
+    </div>
+    <div class="fmt-group">
+      <button class="fmt-btn" id="btn-bold" data-tip="Bold" onclick="fmt('bold')"><b>B</b></button>
+      <button class="fmt-btn" id="btn-italic" data-tip="Italic" onclick="fmt('italic')"><i>I</i></button>
+      <button class="fmt-btn" id="btn-underline" data-tip="Underline" onclick="fmt('underline')"><u>U</u></button>
+      <button class="fmt-btn" id="btn-strike" data-tip="Strikethrough" onclick="fmt('strikeThrough')"><s>S</s></button>
+    </div>
+    <div class="fmt-group">
+      <button class="fmt-btn" data-tip="Align left" onclick="fmt('justifyLeft')">&#8676;</button>
+      <button class="fmt-btn" data-tip="Center" onclick="fmt('justifyCenter')">&#8660;</button>
+      <button class="fmt-btn" data-tip="Align right" onclick="fmt('justifyRight')">&#8677;</button>
+    </div>
+    <div class="fmt-group">
+      <button class="fmt-btn" data-tip="Bullet list" onclick="fmt('insertUnorderedList')">&#8226;&#8212;</button>
+      <button class="fmt-btn" data-tip="Numbered list" onclick="fmt('insertOrderedList')">1&#8212;</button>
+    </div>
+    <div class="fmt-group">
+      <button class="fmt-btn" data-tip="Insert link" onclick="insertLink()">&#128279;</button>
+      <button class="fmt-btn" data-tip="Highlight" onclick="fmt('hiliteColor','rgba(212,168,83,0.25)')">&#9673;</button>
+      <button class="fmt-btn" data-tip="Clear format" onclick="fmt('removeFormat')">&#10006;</button>
+    </div>
+    <div class="fmt-group">
+      <button class="fmt-btn" data-tip="Undo" onclick="document.execCommand('undo')">&#8617;</button>
+      <button class="fmt-btn" data-tip="Redo" onclick="document.execCommand('redo')">&#8618;</button>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <div id="editor-wrap">
+    <div id="editor" contenteditable="true"
+      data-placeholder="Start writing… or ask the AI assistant on the right →"
+      spellcheck="true"
+      oncontextmenu="showCtx(event)"
+      oninput="onEdit()"
+      onkeydown="onKey(event)"
+    ></div>
+  </div>
+
+  <!-- Right AI Panel -->
+  <aside id="sidebar-right">
+    <div id="ai-panel-header">
+      <div class="ai-title"><div class="ai-dot"></div> AI Assistant</div>
+      <div class="ai-quick-btns">
+        <button class="ai-quick" onclick="aiQuick('improve')">Improve writing</button>
+        <button class="ai-quick" onclick="aiQuick('summarize')">Summarize</button>
+        <button class="ai-quick" onclick="aiQuick('expand')">Expand</button>
+        <button class="ai-quick" onclick="aiQuick('shorten')">Shorten</button>
+        <button class="ai-quick" onclick="aiQuick('tone-formal')">Formal tone</button>
+        <button class="ai-quick" onclick="aiQuick('tone-casual')">Casual tone</button>
+        <button class="ai-quick" onclick="aiQuick('grammar')">Fix grammar</button>
+        <button class="ai-quick" onclick="aiQuick('title')">Suggest title</button>
+        <button class="ai-quick" onclick="aiQuick('keywords')">Key points</button>
+        <button class="ai-quick" onclick="aiQuick('continue')">Continue writing</button>
+      </div>
+    </div>
+    <div id="ai-chat"></div>
+    <div id="ai-input-area">
+      <div id="ai-input-wrap">
+        <textarea id="ai-input" rows="1" placeholder="Ask anything about your text…"
+          onkeydown="aiKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="ai-send-btn" onclick="aiSend()">&#10148;</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Status Bar -->
+  <footer id="statusbar">
+    <div class="status-item"><div class="status-dot"></div><span id="status-text">Ready</span></div>
+    <div class="status-item"><span id="cursor-pos">Line 1, Col 1</span></div>
+    <div class="status-item"><span id="sel-info"></span></div>
+    <div style="flex:1"></div>
+    <div class="status-item"><span id="lang-info">EN · UTF-8</span></div>
+    <div class="status-item"><span id="last-saved"></span></div>
+  </footer>
+
+</div>
+
+<!-- Context Menu -->
+<div id="context-menu">
+  <div class="ctx-item" onclick="ctxAI('improve')"><span class="ctx-icon">✦</span> Improve selection</div>
+  <div class="ctx-item" onclick="ctxAI('explain')"><span class="ctx-icon">◎</span> Explain this</div>
+  <div class="ctx-item" onclick="ctxAI('rephrase')"><span class="ctx-icon">↺</span> Rephrase</div>
+  <div class="ctx-divider"></div>
+  <div class="ctx-item" onclick="fmt('bold')"><span class="ctx-icon"><b>B</b></span> Bold</div>
+  <div class="ctx-item" onclick="fmt('italic')"><span class="ctx-icon"><i>I</i></span> Italic</div>
+  <div class="ctx-item" onclick="fmt('hiliteColor','rgba(212,168,83,0.25)')"><span class="ctx-icon">◐</span> Highlight</div>
+  <div class="ctx-divider"></div>
+  <div class="ctx-item" onclick="document.execCommand('copy')"><span class="ctx-icon">⎘</span> Copy</div>
+  <div class="ctx-item" onclick="document.execCommand('cut')"><span class="ctx-icon">✂</span> Cut</div>
+  <div class="ctx-item" onclick="document.execCommand('paste')"><span class="ctx-icon">⎙</span> Paste</div>
+</div>
+
+<!-- Find Bar -->
+<div id="find-bar">
+  <input class="find-input" id="find-input" placeholder="Find…" oninput="doFind()">
+  <input class="find-input" id="replace-input" placeholder="Replace…">
+  <button class="find-btn" onclick="findPrev()">&#8593;</button>
+  <button class="find-btn" onclick="findNext()">&#8595;</button>
+  <button class="find-btn" onclick="doReplace()">Replace</button>
+  <button class="find-btn" onclick="doReplaceAll()">All</button>
+  <span class="find-count" id="find-count"></span>
+  <button class="find-btn" onclick="toggleFind()">&#10005;</button>
+</div>
+
+<script>
+// ── Documents ──
+let docs = JSON.parse(localStorage.getItem('quill_docs') || '[]');
+let activeDoc = null;
+let aiHistory = [];
+
+if (docs.length === 0) {
+  docs = [{
+    id: Date.now(), name: 'Welcome to Quill',
+    content: '<h1>Welcome to Quill</h1><p>A smart, minimal text editor powered by AI. Start typing to craft your next great piece.</p><p>Highlight any text and right-click to get AI suggestions, or use the <strong>AI Assistant</strong> panel on the right.</p><blockquote>The pen is mightier than the sword — and the AI assistant is mightier still.</blockquote><p>Use the toolbar above to format your text. Press <code>Ctrl+S</code> to save, <code>Ctrl+F</code> to find, and <code>Ctrl+Shift+F</code> for focus mode.</p>',
+    created: Date.now(), updated: Date.now()
+  }];
+  saveDocs();
+}
+
+function saveDocs() { localStorage.setItem('quill_docs', JSON.stringify(docs)); }
+
+function renderDocList() {
+  const el = document.getElementById('doc-list');
+  el.innerHTML = docs.map(d => `
+    <div class="doc-item ${activeDoc && activeDoc.id===d.id?'active':''}" onclick="loadDoc(${d.id})">
+      <span class="doc-icon">◻</span>
+      <span class="doc-name">${d.name}</span>
+    </div>
+  `).join('');
+}
+
+function loadDoc(id) {
+  if (activeDoc) { activeDoc.content = document.getElementById('editor').innerHTML; saveDocs(); }
+  activeDoc = docs.find(d => d.id === id);
+  document.getElementById('editor').innerHTML = activeDoc.content || '';
+  aiHistory = [];
+  document.getElementById('ai-chat').innerHTML = '';
+  updateStats();
+  renderDocList();
+  updateOutline();
+  setStatus('Loaded: ' + activeDoc.name);
+}
+
+function newDoc() {
+  const name = prompt('Document name:', 'Untitled ' + (docs.length + 1));
+  if (!name) return;
+  const doc = { id: Date.now(), name, content: '', created: Date.now(), updated: Date.now() };
+  docs.unshift(doc);
+  saveDocs();
+  loadDoc(doc.id);
+}
+
+function saveDoc() {
+  if (!activeDoc) return;
+  activeDoc.content = document.getElementById('editor').innerHTML;
+  activeDoc.updated = Date.now();
+  const ts = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  document.getElementById('last-saved').textContent = 'Saved ' + ts;
+  saveDocs();
+  setStatus('Saved');
+}
+
+function openDoc() { renderDocList(); setStatus('Select a document from the sidebar'); }
+
+function exportDoc() {
+  const text = document.getElementById('editor').innerText;
+  const blob = new Blob([text], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (activeDoc ? activeDoc.name : 'document') + '.txt';
+  a.click();
+}
+
+// ── Stats ──
+function updateStats() {
+  const ed = document.getElementById('editor');
+  const text = ed.innerText || '';
+  const words = text.trim() ? text.trim().split(/\s+/).filter(w=>w).length : 0;
+  const chars = text.length;
+  const sentences = text.split(/[.!?]+/).filter(s=>s.trim()).length;
+  const paras = text.split(/\n\n+/).filter(p=>p.trim()).length;
+  const read = Math.max(1, Math.round(words / 200));
+  document.getElementById('stat-words').textContent = words.toLocaleString();
+  document.getElementById('stat-chars').textContent = chars.toLocaleString();
+  document.getElementById('stat-sent').textContent = sentences;
+  document.getElementById('stat-para').textContent = paras;
+  document.getElementById('stat-read').textContent = read + ' min';
+  document.getElementById('wc-display').textContent = words + (words === 1 ? ' word' : ' words');
+  updateOutline();
+}
+
+function updateOutline() {
+  const ed = document.getElementById('editor');
+  const headings = ed.querySelectorAll('h1,h2,h3');
+  const ol = document.getElementById('outline-list');
+  if (!headings.length) { ol.textContent = 'No headings yet'; return; }
+  ol.innerHTML = Array.from(headings).map(h => {
+    const indent = h.tagName === 'H1' ? 0 : h.tagName === 'H2' ? 12 : 22;
+    return `<div style="padding:3px 0 3px ${indent}px;cursor:pointer;transition:color 0.1s;" 
+      onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color=''"
+      onclick="h.scrollIntoView({behavior:'smooth'})">${h.textContent.substring(0,28)}</div>`;
+  }).join('');
+}
+
+// ── Format ──
+function fmt(cmd, val) {
+  document.getElementById('editor').focus();
+  document.execCommand(cmd, false, val || null);
+  updateFormatButtons();
+}
+
+function formatBlock(tag) {
+  document.getElementById('editor').focus();
+  document.execCommand('formatBlock', false, tag === 'pre' ? 'pre' : '<' + tag + '>');
+}
+
+function insertLink() {
+  const url = prompt('URL:', 'https://');
+  if (url) document.execCommand('createLink', false, url);
+}
+
+function updateFormatButtons() {
+  ['bold','italic','underline','strikeThrough'].forEach(cmd => {
+    const id = 'btn-' + cmd.toLowerCase().replace('strikethrough','strike');
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('on', document.queryCommandState(cmd));
+  });
+}
+
+// ── Editor events ──
+function onEdit() {
+  updateStats();
+  if (activeDoc) { activeDoc.content = document.getElementById('editor').innerHTML; }
+}
+
+function onKey(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveDoc(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); toggleFind(); }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') { e.preventDefault(); toggleFocus(); }
+  updateFormatButtons();
+}
+
+document.getElementById('editor').addEventListener('mouseup', updateFormatButtons);
+document.getElementById('editor').addEventListener('mouseup', updateCursor);
+document.getElementById('editor').addEventListener('keyup', updateCursor);
+
+function updateCursor() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const selText = sel.toString();
+  if (selText) {
+    const wc = selText.trim().split(/\s+/).filter(w=>w).length;
+    document.getElementById('sel-info').textContent = wc + ' words selected';
+  } else {
+    document.getElementById('sel-info').textContent = '';
+  }
+}
+
+// ── Context Menu ──
+let savedRange = null;
+function showCtx(e) {
+  e.preventDefault();
+  const menu = document.getElementById('context-menu');
+  menu.style.display = 'block';
+  menu.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px';
+  menu.style.top = Math.min(e.clientY, window.innerHeight - 260) + 'px';
+  savedRange = window.getSelection().getRangeAt(0).cloneRange();
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('context-menu').style.display = 'none';
+});
+
+function ctxAI(action) {
+  const sel = window.getSelection().toString() || document.getElementById('editor').innerText.substring(0, 300);
+  const prompts = {
+    improve: `Improve this text:\n\n"${sel}"\n\nReturn only the improved version.`,
+    explain: `Explain this text briefly:\n\n"${sel}"`,
+    rephrase: `Rephrase this text:\n\n"${sel}"\n\nReturn only the rephrased version.`,
+  };
+  sendAIMessage(prompts[action], action);
+}
+
+// ── Focus Mode ──
+function toggleFocus() { document.body.classList.toggle('focus-mode'); }
+
+// ── Find & Replace ──
+function toggleFind() {
+  document.getElementById('find-bar').classList.toggle('open');
+  if (document.getElementById('find-bar').classList.contains('open')) {
+    document.getElementById('find-input').focus();
+  }
+}
+
+let findMatches = [], findIdx = 0;
+function doFind() {
+  const term = document.getElementById('find-input').value;
+  document.getElementById('find-count').textContent = term ? '...' : '';
+  if (!term) return;
+  const text = document.getElementById('editor').innerText;
+  const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi');
+  const matches = [...text.matchAll(regex)];
+  document.getElementById('find-count').textContent = matches.length + ' found';
+  findMatches = matches; findIdx = 0;
+}
+function findNext() { findIdx = (findIdx + 1) % Math.max(1, findMatches.length); }
+function findPrev() { findIdx = (findIdx - 1 + Math.max(1, findMatches.length)) % Math.max(1, findMatches.length); }
+function doReplace() {
+  const find = document.getElementById('find-input').value;
+  const rep = document.getElementById('replace-input').value;
+  if (!find) return;
+  const ed = document.getElementById('editor');
+  ed.innerHTML = ed.innerHTML.replace(new RegExp(find,'g'), rep);
+  updateStats();
+}
+function doReplaceAll() { doReplace(); }
+
+// ── AI Assistant ──
+async function aiSend() {
+  const input = document.getElementById('ai-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.style.height = 'auto';
+  sendAIMessage(text, 'user');
+}
+
+function aiKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSend(); }
+}
+
+function aiQuick(action) {
+  const edText = document.getElementById('editor').innerText.trim();
+  const sel = window.getSelection().toString().trim();
+  const target = sel || edText.substring(0, 800);
+
+  const prompts = {
+    improve:      `Improve the writing quality of this text, keeping the same meaning and voice:\n\n"${target}"`,
+    summarize:    `Summarize this text in 2–3 concise sentences:\n\n"${target}"`,
+    expand:       `Expand and elaborate on this text with more detail and depth:\n\n"${target}"`,
+    shorten:      `Shorten this text to its essential points without losing meaning:\n\n"${target}"`,
+    'tone-formal': `Rewrite this text in a formal, professional tone:\n\n"${target}"`,
+    'tone-casual': `Rewrite this text in a friendly, casual conversational tone:\n\n"${target}"`,
+    grammar:      `Fix any grammar, spelling, or punctuation errors in this text:\n\n"${target}"`,
+    title:        `Suggest 3 creative, compelling titles for this document:\n\n"${target}"`,
+    keywords:     `Extract the 5–7 key points or themes from this text:\n\n"${target}"`,
+    continue:     `Continue writing from where this text leaves off, matching the style and tone:\n\n"${target}"`,
+  };
+  sendAIMessage(prompts[action], action);
+}
+
+async function sendAIMessage(userMsg, label) {
+  const chat = document.getElementById('ai-chat');
+
+  const userBubble = document.createElement('div');
+  userBubble.className = 'ai-msg user';
+  userBubble.innerHTML = `<div class="ai-msg-label">You</div>${escHtml(userMsg.length > 120 ? userMsg.substring(0,120)+'…' : userMsg)}`;
+  chat.appendChild(userBubble);
+
+  const loading = document.createElement('div');
+  loading.className = 'ai-loading';
+  loading.innerHTML = '<span></span><span></span><span></span>';
+  chat.appendChild(loading);
+  chat.scrollTop = chat.scrollHeight;
+
+  aiHistory.push({ role: 'user', content: userMsg });
+
+  const systemPrompt = `You are an intelligent writing assistant embedded in a smart text editor called Quill. 
+Help the user with their writing — improve text, answer questions about their document, offer suggestions, fix grammar, change tone, expand or shorten content.
+Be concise and practical. Respond in markdown when helpful. Never repeat the user's text back verbatim unless asked.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: aiHistory
+      })
+    });
+
+    loading.remove();
+
+    if (!res.ok) throw new Error('API error ' + res.status);
+    const data = await res.json();
+    const reply = data.content.map(b => b.text || '').join('');
+
+    aiHistory.push({ role: 'assistant', content: reply });
+
+    const aiBubble = document.createElement('div');
+    aiBubble.className = 'ai-msg assistant';
+    aiBubble.innerHTML = `<div class="ai-msg-label">Quill AI</div>${renderMarkdown(reply)}`;
+    chat.appendChild(aiBubble);
+
+    if (['improve','expand','shorten','tone-formal','tone-casual','grammar','rephrase'].includes(label)) {
+      const applyBtn = document.createElement('button');
+      applyBtn.style.cssText = 'background:none;border:1px solid rgba(124,156,240,0.3);color:var(--ai);font-family:var(--font-body);font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;margin-top:6px;transition:all 0.15s;';
+      applyBtn.textContent = 'Apply to document';
+      applyBtn.onclick = () => {
+        const ed = document.getElementById('editor');
+        const sel = window.getSelection().toString().trim();
+        if (sel) { document.execCommand('insertText', false, reply); }
+        else {
+          const current = ed.innerText;
+          if (current.trim()) ed.innerHTML = '<p>' + reply.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>') + '</p>';
+        }
+        updateStats();
+        applyBtn.textContent = 'Applied ✓';
+        applyBtn.style.color = 'var(--success)';
+      };
+      aiBubble.appendChild(applyBtn);
+    }
+
+  } catch (err) {
+    loading.remove();
+    const errBubble = document.createElement('div');
+    errBubble.className = 'ai-msg assistant';
+    errBubble.style.borderColor = 'rgba(224,82,82,0.3)';
+    errBubble.innerHTML = `<div class="ai-msg-label">Error</div>Could not reach AI. Check your connection.`;
+    chat.appendChild(errBubble);
+  }
+
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function renderMarkdown(text) {
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/^[-*] (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s,'<ul>$1</ul>')
+    .replace(/\n\n/g,'</p><p>')
+    .replace(/\n/g,'<br>');
+}
+
+function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 80) + 'px';
+}
+
+function setStatus(msg) {
+  document.getElementById('status-text').textContent = msg;
+  setTimeout(() => document.getElementById('status-text').textContent = 'Ready', 2500);
+}
+
+// ── Init ──
+loadDoc(docs[0].id);
+setInterval(() => {
+  if (activeDoc) { activeDoc.content = document.getElementById('editor').innerHTML; saveDocs(); }
+}, 30000);
+
+// Keyboard shortcuts info
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.getElementById('find-bar').classList.remove('open');
+    document.getElementById('context-menu').style.display = 'none';
+  }
+});
+</script>
+</body>
+</html>
